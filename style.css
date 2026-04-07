@@ -275,6 +275,16 @@ a {
 .lyrics-scroll {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE/Edge */
+}
+
+.lyrics-scroll::-webkit-scrollbar {
+  display: none;
+  /* Chrome/Safari/Opera */
 }
 
 .lyrics-text {
@@ -282,6 +292,10 @@ a {
   max-width: 600px;
   margin: 0 auto;
   text-align: center;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  overflow-x: hidden;
 }
 
 .lrc-line {

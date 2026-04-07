@@ -1,0 +1,438 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0
+}
+
+:root {
+  --bg: #0f0f0f;
+  --bg2: #181818;
+  --bd: #2a2a2a;
+  --tx: #e8e8e8;
+  --tx2: #888;
+  --ac: #c8a96e;
+  --r: 10px;
+  --f: system-ui, sans-serif
+}
+
+body {
+  font-family: var(--f);
+  background: var(--bg);
+  color: var(--tx);
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 100vh
+}
+
+a {
+  color: var(--ac);
+  text-decoration: none
+}
+
+.wrap {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 48px 20px 140px
+}
+
+.hd {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 40px
+}
+
+.av {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg2)
+}
+
+.av-ph {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  flex-shrink: 0
+}
+
+.hd-info h1 {
+  font-size: 22px;
+  font-weight: 700
+}
+
+.hd-info .loc {
+  color: var(--tx2);
+  font-size: 13px;
+  margin: 2px 0 8px
+}
+
+.bio {
+  color: var(--tx2);
+  font-size: 14px;
+  max-width: 460px
+}
+
+.links {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap
+}
+
+.lnk {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  color: var(--tx2);
+  transition: .15s
+}
+
+.lnk:hover {
+  border-color: var(--ac);
+  color: var(--ac)
+}
+
+/* player bar */
+#bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg2);
+  border-top: 1px solid var(--bd);
+  padding: 12px 24px;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 100
+}
+
+#bar.on {
+  display: flex
+}
+
+.b-art {
+  min-width: 0;
+  width: 180px
+}
+
+.b-art strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tx);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.b-art span {
+  font-size: 11px;
+  color: var(--tx2)
+}
+
+.b-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  max-width: 400px;
+  margin: 0 auto
+}
+
+.b-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px
+}
+
+.b-prog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%
+}
+
+.b-prog .time {
+  font-size: 11px;
+  color: var(--tx2);
+  min-width: 36px;
+  text-align: center
+}
+
+.b-prog input {
+  flex: 1;
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 2px;
+  accent-color: var(--ac);
+  cursor: pointer
+}
+
+.b-right {
+  width: 100px;
+  display: flex;
+  justify-content: flex-end
+}
+
+.lyrics-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--tx2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: .15s
+}
+
+.lyrics-btn:hover {
+  color: var(--tx);
+  background: var(--bg)
+}
+
+.lyrics-btn.active {
+  color: var(--ac);
+  background: rgba(200, 169, 110, 0.1)
+}
+
+.ic-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--tx2);
+  padding: 6px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: .15s
+}
+
+.ic-btn:hover {
+  color: var(--tx);
+  background: var(--bg)
+}
+
+.ic-btn.play-btn {
+  background: var(--ac);
+  color: #000;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  padding: 0
+}
+
+.ic-btn.play-btn:hover {
+  opacity: .85
+}
+
+/* lyrics panel */
+.lyrics-panel {
+  position: fixed;
+  bottom: 76px;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  background: var(--bg2);
+  border-top: 1px solid var(--bd);
+  max-height: 40vh;
+  transform: translateY(100%);
+  visibility: hidden;
+  transition: transform .3s, visibility 0s .3s;
+  display: flex;
+  flex-direction: column
+}
+
+.lyrics-panel.up {
+  transform: translateY(0);
+  visibility: visible;
+  transition: transform .3s, visibility 0s 0s
+}
+
+.lyrics-header {
+  flex-shrink: 0;
+  padding: 8px 20px 6px;
+  border-bottom: 1px solid var(--bd);
+  background: var(--bg2);
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tx2);
+  text-transform: uppercase
+}
+
+.lyrics-scroll {
+  flex: 1;
+  overflow-y: auto
+}
+
+.lyrics-text {
+  padding: 14px 20px 24px;
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center
+}
+
+.lrc-line {
+  font-size: 13px;
+  color: var(--tx2);
+  line-height: 1.5;
+  padding: 3px 0;
+  display: block;
+  cursor: pointer;
+  transition: color .2s
+}
+
+.lrc-line:hover {
+  color: var(--tx)
+}
+
+.lrc-line.active {
+  color: var(--tx);
+  font-weight: 700;
+  font-size: 14px
+}
+
+.lrc-line-blank {
+  height: 10px;
+  display: block
+}
+
+/* releases */
+.rel-block {
+  margin-bottom: 36px
+}
+
+.track-list {
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  overflow: hidden
+}
+
+.track {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bd);
+  cursor: pointer
+}
+
+.track:last-child {
+  border-bottom: none
+}
+
+.track:hover {
+  background: var(--bg2)
+}
+
+.track.playing {
+  background: var(--bg2)
+}
+
+.t-num {
+  font-size: 12px;
+  color: var(--tx2);
+  width: 18px;
+  text-align: center
+}
+
+.track.playing .t-num {
+  color: var(--ac)
+}
+
+.t-art {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--bd)
+}
+
+.t-info {
+  flex: 1;
+  min-width: 0
+}
+
+.t-info strong {
+  display: block;
+  font-size: 14px
+}
+
+.t-info span {
+  font-size: 12px;
+  color: var(--tx2)
+}
+
+.t-dur {
+  font-size: 12px;
+  color: var(--tx2)
+}
+
+.album-block {
+  margin-bottom: 28px
+}
+
+.album-hd {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px
+}
+
+.album-cv {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--bg2)
+}
+
+.album-meta strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600
+}
+
+.album-meta span {
+  font-size: 12px;
+  color: var(--tx2)
+}
+
+.msg {
+  color: var(--tx2);
+  font-size: 14px;
+  padding: 40px 0;
+  text-align: center
+}
+
+@media (max-width: 600px) {
+  #bar .b-art {
+    display: none;
+  }
+
+  #bar .b-right {
+    width: auto;
+  }
+
+  #bar .b-center {
+    max-width: none;
+  }
+}

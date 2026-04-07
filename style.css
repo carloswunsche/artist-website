@@ -444,3 +444,20 @@ a {
     max-width: none;
   }
 }
+
+@media (min-width: 768px) {
+  #bar {
+    justify-content: center;
+    gap: 24px;
+  }
+
+  #bar .b-art,
+  #bar .b-right {
+    width: 180px;
+  }
+
+  #bar .b-center {
+    max-width: 400px;
+    flex: 0 1 auto;
+  }
+}

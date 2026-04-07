@@ -98,3 +98,37 @@
     padding: 12px;
   }
 }
+
+/* iOS range styling */
+@media (max-width: 768px) {
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    height: 4px;
+    background: var(--bd);
+    border-radius: 2px;
+  }
+
+  /* Track */
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: var(--bd);
+    border-radius: 2px;
+  }
+
+  /* Thumb */
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--ac);
+    margin-top: -4px;
+    /* centers thumb */
+  }
+
+  /* Avoid fat iOS padding */
+  input[type="range"]:focus {
+    outline: none;
+  }
+}

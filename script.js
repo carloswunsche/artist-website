@@ -64,37 +64,16 @@ function startLrcHighlight() {
   lrcInterval = setInterval(() => { if (lrcLines.length && aud.src && !aud.paused) highlightCurrentLine(aud.currentTime); }, 200);
 }
 
-function decodeUtf8(str) {
-  try {
-    return decodeURIComponent(escape(str));
-  } catch(e) {
-    return str;
-  }
-}
-
 function updateLyricsPanel(track) {
   const btn = document.getElementById('lyrics-btn');
-  let raw = track.lyrics ? track.lyrics.trim() : '';
-  if (raw) raw = decodeUtf8(raw);
-  const has = raw && raw.length > 0;
+  const has = track.lyrics && track.lyrics.trim();
   btn.style.display = has ? 'flex' : 'none';
   if (lrcInterval) { clearInterval(lrcInterval); lrcInterval = null; }
   lrcLines = [];
-  if (!has) { 
-    if (lyricsOpen) { 
-      lyricsOpen = false; 
-      applyLyricsOpen(false); 
-      btn.classList.remove('active'); 
-    } 
-    return; 
-  }
-  if (raw.startsWith('[')) { 
-    lrcLines = parseLrc(raw); 
-    renderLrcLines(); 
-    startLrcHighlight(); 
-  } else {
-    renderPlainLyrics(raw);
-  }
+  if (!has) { if (lyricsOpen) { lyricsOpen = false; applyLyricsOpen(false); btn.classList.remove('active'); } return; }
+  const raw = track.lyrics.trim();
+  if (raw.startsWith('[')) { lrcLines = parseLrc(raw); renderLrcLines(); startLrcHighlight(); }
+  else renderPlainLyrics(raw);
   if (lyricsOpen) applyLyricsOpen(true);
 }
 

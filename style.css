@@ -243,51 +243,45 @@ a {
   opacity: .85
 }
 
-/* lyrics panel */
+/* lyrics panel - inline (not overlay) */
 .lyrics-panel {
-  position: fixed;
-  bottom: 76px;
-  left: 0;
-  right: 0;
-  z-index: 90;
   background: var(--bg2);
   border-top: 1px solid var(--bd);
+  border-bottom: 1px solid var(--bd);
+  margin-top: 20px;
+  margin-bottom: 0;
+  display: none;
+  flex-direction: column;
   max-height: 40vh;
-  transform: translateY(100%);
-  visibility: hidden;
-  transition: transform .3s, visibility 0s .3s;
-  display: flex;
-  flex-direction: column
+  overflow-y: auto;
 }
 
 .lyrics-panel.up {
-  transform: translateY(0);
-  visibility: visible;
-  transition: transform .3s, visibility 0s 0s
+  display: flex;
 }
 
 .lyrics-header {
   flex-shrink: 0;
   padding: 8px 20px 6px;
-  border-bottom: 1px solid var(--bd);
   background: var(--bg2);
   text-align: center;
   font-size: 10px;
   font-weight: 700;
   color: var(--tx2);
-  text-transform: uppercase
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--bd);
 }
 
 .lyrics-scroll {
   flex: 1;
-  overflow-y: auto
+  overflow-y: auto;
 }
 
 .lyrics-text {
   padding: 14px 20px 24px;
   max-width: 600px;
   margin: 0 auto;
-  text-align: center
+  text-align: center;
 }
 
 .lrc-line {
@@ -297,22 +291,22 @@ a {
   padding: 3px 0;
   display: block;
   cursor: pointer;
-  transition: color .2s
+  transition: color .2s;
 }
 
 .lrc-line:hover {
-  color: var(--tx)
+  color: var(--tx);
 }
 
 .lrc-line.active {
   color: var(--tx);
   font-weight: 700;
-  font-size: 14px
+  font-size: 14px;
 }
 
 .lrc-line-blank {
   height: 10px;
-  display: block
+  display: block;
 }
 
 /* releases */

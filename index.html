@@ -8,7 +8,15 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c8a96e'/%3E%3Cpath d='M16 8v8.55A4 4 0 1 0 18 17V12h4V8h-6z' fill='%23000'/%3E%3C/svg%3E">
 </head>
 <body>
-<div class="wrap"><div id="root"><p class="msg">Loading…</p></div></div>
+<div class="wrap">
+  <div id="root"><p class="msg">Loading…</p></div>
+  <div class="lyrics-panel" id="lyrics-panel">
+    <div class="lyrics-header">Lyrics</div>
+    <div class="lyrics-scroll" id="lyrics-scroll">
+      <div class="lyrics-text" id="lyrics-text"></div>
+    </div>
+  </div>
+</div>
 
 <div id="bar">
   <audio id="aud"></audio>
@@ -16,14 +24,14 @@
   <div class="b-center">
     <div class="b-ctrl">
       <button class="ic-btn" id="b-prev" onclick="skip(-1)">
-        <svg width="16" height="16" fill="currentColor"><use href="icons.svg#prev"/></svg>
+        <svg width="16" height="16" fill="currentColor"><use href="#prev"/></svg>
       </button>
       <button class="ic-btn play-btn" id="b-pp" onclick="togglePlay()">
-        <svg id="ico-play" width="16" height="16" fill="currentColor" style="display:block"><use href="icons.svg#play"/></svg>
-        <svg id="ico-pause" width="16" height="16" fill="currentColor" style="display:none"><use href="icons.svg#pause"/></svg>
+        <svg id="ico-play" width="16" height="16" fill="currentColor"><use href="#play"/></svg>
+        <svg id="ico-pause" width="16" height="16" fill="currentColor" style="display:none"><use href="#pause"/></svg>
       </button>
       <button class="ic-btn" id="b-next" onclick="skip(1)">
-        <svg width="16" height="16" fill="currentColor"><use href="icons.svg#next"/></svg>
+        <svg width="16" height="16" fill="currentColor"><use href="#next"/></svg>
       </button>
     </div>
     <div class="b-prog">
@@ -34,18 +42,19 @@
   </div>
   <div class="b-right">
     <button class="lyrics-btn" id="lyrics-btn" onclick="toggleLyrics()" style="display:none">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="icons.svg#lyrics"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#lyrics"/></svg>
       Lyrics
     </button>
   </div>
 </div>
 
-<div class="lyrics-panel" id="lyrics-panel">
-  <div class="lyrics-header">Lyrics</div>
-  <div class="lyrics-scroll" id="lyrics-scroll">
-    <div class="lyrics-text" id="lyrics-text"></div>
-  </div>
-</div>
+<svg style="display:none">
+  <symbol id="prev" viewBox="0 0 16 16"><path d="M3.5 3.5a.5.5 0 0 1 1 0v4l7-4v8l-7-4v4a.5.5 0 0 1-1 0v-8z"/></symbol>
+  <symbol id="next" viewBox="0 0 16 16"><path d="M12.5 3.5a.5.5 0 0 0-1 0v4l-7-4v8l7-4v4a.5.5 0 0 0 1 0v-8z"/></symbol>
+  <symbol id="play" viewBox="0 0 16 16"><path d="M6 3.5a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm3.5 0a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/></symbol>
+  <symbol id="pause" viewBox="0 0 16 16"><path d="M10.804 8 5 4.633v6.734L10.804 8zm.792-.696a.802.802 0 0 1 0 1.392l-6.363 3.692C4.713 12.69 4 12.345 4 11.692V4.308c0-.653.713-.998 1.233-.696l6.363 3.692z"/></symbol>
+  <symbol id="lyrics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+</svg>
 
 <script src="script.js"></script>
 </body>

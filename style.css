@@ -103,7 +103,7 @@ a {
   color: var(--ac)
 }
 
-/* player bar */
+/* Player bar - clean desktop version */
 #bar {
   position: fixed;
   bottom: 0;
@@ -114,17 +114,18 @@ a {
   padding: 12px 24px;
   display: none;
   align-items: center;
-  justify-content: space-between;
-  z-index: 100
+  justify-content: center;
+  gap: 24px;
+  z-index: 100;
 }
 
 #bar.on {
-  display: flex
+  display: flex;
 }
 
 .b-art {
-  min-width: 0;
-  width: 180px
+  width: 100px;
+  flex-shrink: 0;
 }
 
 .b-art strong {
@@ -134,42 +135,45 @@ a {
   color: var(--tx);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis
+  text-overflow: ellipsis;
 }
 
 .b-art span {
   font-size: 11px;
-  color: var(--tx2)
+  color: var(--tx2);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .b-center {
+  width: 500px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  flex: 1;
-  max-width: 400px;
-  margin: 0 auto
 }
 
 .b-ctrl {
   display: flex;
   align-items: center;
-  gap: 8px
+  gap: 8px;
 }
 
 .b-prog {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%
+  width: 100%;
 }
 
 .b-prog .time {
   font-size: 11px;
   color: var(--tx2);
   min-width: 36px;
-  text-align: center
+  text-align: center;
 }
 
 .b-prog input {
@@ -178,15 +182,17 @@ a {
   background: var(--bg3);
   border-radius: 2px;
   accent-color: var(--ac);
-  cursor: pointer
+  cursor: pointer;
 }
 
 .b-right {
   width: 100px;
+  flex-shrink: 0;
   display: flex;
-  justify-content: flex-end
+  justify-content: flex-end;
 }
 
+/* Lyrics button */
 .lyrics-btn {
   background: none;
   border: none;
@@ -212,6 +218,7 @@ a {
   background: rgba(200, 169, 110, 0.1)
 }
 
+/* Control buttons */
 .ic-btn {
   background: none;
   border: none;
@@ -240,10 +247,11 @@ a {
 }
 
 .ic-btn.play-btn:hover {
-  opacity: .85
+  filter: brightness(1.05);
 }
 
-/* lyrics panel - inline (not overlay) */
+
+/* Lyrics panel - inline (not overlay) */
 .lyrics-panel {
   background: var(--bg2);
   border-top: 1px solid var(--bd);
@@ -277,14 +285,11 @@ a {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
-  /* Firefox */
   -ms-overflow-style: none;
-  /* IE/Edge */
 }
 
 .lyrics-scroll::-webkit-scrollbar {
   display: none;
-  /* Chrome/Safari/Opera */
 }
 
 .lyrics-text {
@@ -323,7 +328,12 @@ a {
   display: block;
 }
 
-/* releases */
+.lyrics-btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Releases */
 .rel-block {
   margin-bottom: 36px
 }
@@ -344,8 +354,9 @@ a {
 }
 
 .track:last-child {
-  border-bottom: none
+  border-bottom: none;
 }
+
 
 .track:hover {
   background: var(--bg2)
@@ -429,35 +440,4 @@ a {
   font-size: 14px;
   padding: 40px 0;
   text-align: center
-}
-
-@media (max-width: 600px) {
-  #bar .b-art {
-    display: none;
-  }
-
-  #bar .b-right {
-    width: auto;
-  }
-
-  #bar .b-center {
-    max-width: none;
-  }
-}
-
-@media (min-width: 768px) {
-  #bar {
-    justify-content: center;
-    gap: 24px;
-  }
-
-  #bar .b-art,
-  #bar .b-right {
-    width: 180px;
-  }
-
-  #bar .b-center {
-    max-width: 400px;
-    flex: 0 1 auto;
-  }
 }

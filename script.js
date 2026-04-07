@@ -4,9 +4,19 @@ let queue = [], qi = -1, paused = false;
 const aud = document.getElementById('aud');
 let lyricsOpen = false, lrcLines = [], lrcInterval = null, lrcUserScrolling = false, lrcScrollTimer = null;
 
+let lastRewindTap = 0;
+const RESTART_THRESHOLD = 1.2; // seconds
+
+
 function res(base, p) { return !p ? '' : p.startsWith('http') ? p : base + p; }
 function fmt(s) { if (!s || isNaN(s)) return '0:00'; return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0'); }
-function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+function esc(s) {
+  return s
+    ? s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
+    : '';
+}
+
 
 aud.ontimeupdate = () => {
   document.getElementById('b-cur').textContent = fmt(aud.currentTime);
@@ -26,19 +36,27 @@ seek.addEventListener('touchend', () => { seek._drag = false; aud.currentTime = 
 function parseLrc(lrc) {
   const lines = [];
   lrc.split('\n').forEach(line => {
-    const m = line.match(/^\[(\d+):(\d+[.:](\d+))\](.*)$/);
-    if (m) {
-      const mins = parseInt(m[1]), secs = parseFloat(m[2].replace(':', '.'));
-      lines.push({ time: mins * 60 + secs, text: m[4].trim() });
-    }
+    const m = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
+    if (!m) return;
+    lines.push({
+      time: parseInt(m[1], 10) * 60 + parseFloat(m[2]),
+      text: m[3].trim()
+    });
   });
-  return lines.sort((a,b) => a.time - b.time);
+  return lines.sort((a, b) => a.time - b.time);
 }
 
 function renderLrcLines() {
   const container = document.getElementById('lyrics-text');
   if (!container) return;
-  container.innerHTML = lrcLines.map((l, i) => l.text ? `<span class="lrc-line" id="lrc-${i}" onclick="seekToLine(${i})">${esc(l.text)}</span>` : `<span class="lrc-line-blank" id="lrc-${i}"></span>`).join('');
+  
+container.innerHTML = lrcLines.map((l, i) =>
+  `<span class="lrc-line" id="lrc-${i}" onclick="seekToLine(${i})">
+     ${esc(l.text)}
+   </span>`
+).join('');
+
+
 }
 
 function renderPlainLyrics(text) {
@@ -48,38 +66,94 @@ function renderPlainLyrics(text) {
 
 function highlightCurrentLine(currentTime) {
   let active = -1;
-  for (let i = 0; i < lrcLines.length; i++) if (lrcLines[i].time <= currentTime) active = i;
-  lrcLines.forEach((_, i) => { const el = document.getElementById(`lrc-${i}`); if (el) el.classList.toggle('active', i === active); });
+  for (let i = 0; i < lrcLines.length; i++) {
+    if (lrcLines[i].time <= currentTime) active = i;
+  }
+  lrcLines.forEach((_, i) => {
+    const el = document.getElementById(`lrc-${i}`);
+    if (el) el.classList.toggle('active', i === active);
+  });
+  // Auto-scroll only if not manually scrolling
   if (!lrcUserScrolling && active >= 0) {
     const activeEl = document.getElementById(`lrc-${active}`);
-    const scrollDiv = document.getElementById('lyrics-scroll');
-    if (activeEl && scrollDiv) scrollDiv.scrollTo({ top: activeEl.offsetTop - scrollDiv.clientHeight / 3, behavior: 'smooth' });
+    if (activeEl) activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
 function startLrcHighlight() {
   if (lrcInterval) clearInterval(lrcInterval);
   const scrollDiv = document.getElementById('lyrics-scroll');
-  if (scrollDiv) scrollDiv.onscroll = () => { lrcUserScrolling = true; clearTimeout(lrcScrollTimer); lrcScrollTimer = setTimeout(() => { lrcUserScrolling = false; }, 3000); };
-  lrcInterval = setInterval(() => { if (lrcLines.length && aud.src && !aud.paused) highlightCurrentLine(aud.currentTime); }, 200);
+  if (scrollDiv) {
+    scrollDiv.onscroll = () => {
+      lrcUserScrolling = true;
+      clearTimeout(lrcScrollTimer);
+      lrcScrollTimer = setTimeout(() => { lrcUserScrolling = false; }, 2000);
+    };
+  }
+  lrcInterval = setInterval(() => {
+    if (lrcLines.length && aud.src && !aud.paused) highlightCurrentLine(aud.currentTime);
+  }, 200);
 }
 
 function updateLyricsPanel(track) {
   const btn = document.getElementById('lyrics-btn');
-  const has = track.lyrics && track.lyrics.trim();
-  btn.style.display = has ? 'flex' : 'none';
+  let raw = track.lyrics ? track.lyrics.trim() : '';
+  const has = raw && raw.length > 0;
+  
+  btn.classList.toggle('disabled', !has);
   if (lrcInterval) { clearInterval(lrcInterval); lrcInterval = null; }
   lrcLines = [];
-  if (!has) { if (lyricsOpen) { lyricsOpen = false; applyLyricsOpen(false); btn.classList.remove('active'); } return; }
-  const raw = track.lyrics.trim();
-  if (raw.startsWith('[')) { lrcLines = parseLrc(raw); renderLrcLines(); startLrcHighlight(); }
-  else renderPlainLyrics(raw);
-  if (lyricsOpen) applyLyricsOpen(true);
+  
+  if (!has) {
+    // No lyrics: close panel if open
+    if (lyricsOpen) {
+      lyricsOpen = false;
+      document.getElementById('lyrics-panel').classList.remove('up');
+      btn.classList.remove('active');
+    }
+    return;
+  }
+  
+  // Has lyrics: parse and render
+  if (raw.startsWith('[')) {
+    lrcLines = parseLrc(raw);
+    renderLrcLines();
+    startLrcHighlight();
+  } else {
+    renderPlainLyrics(raw);
+  }
+  
+  // If panel was already open, keep it open (don't toggle)
+  if (lyricsOpen) {
+    document.getElementById('lyrics-panel').classList.add('up');
+    btn.classList.add('active');
+  }
 }
 
-function seekToLine(idx) { if (lrcLines[idx]) { aud.currentTime = lrcLines[idx].time; lrcUserScrolling = false; highlightCurrentLine(aud.currentTime); } }
+function seekToLine(idx) {
+  if (!lrcLines[idx]) return;
+  lrcUserScrolling = true;
+  clearTimeout(lrcScrollTimer);
+  aud.currentTime = lrcLines[idx].time;
+  const el = document.getElementById(`lrc-${idx}`);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  lrcScrollTimer = setTimeout(() => { lrcUserScrolling = false; }, 2000);
+  highlightCurrentLine(aud.currentTime);
+}
 function applyLyricsOpen(open) { document.getElementById('lyrics-panel').classList.toggle('up', open); }
-function toggleLyrics() { lyricsOpen = !lyricsOpen; applyLyricsOpen(lyricsOpen); document.getElementById('lyrics-btn').classList.toggle('active', lyricsOpen); }
+function toggleLyrics() {
+  const btn = document.getElementById('lyrics-btn');
+  if (btn.classList.contains('disabled')) return;
+  lyricsOpen = !lyricsOpen;
+  const panel = document.getElementById('lyrics-panel');
+  if (lyricsOpen) {
+    panel.classList.add('up');
+    btn.classList.add('active');
+  } else {
+    panel.classList.remove('up');
+    btn.classList.remove('active');
+  }
+}
 
 function playTrack(i) {
   if (i < 0 || i >= queue.length) return;
@@ -100,7 +174,51 @@ function playTrack(i) {
 }
 
 function togglePlay() { if (aud.paused) { aud.play(); paused=false; } else { aud.pause(); paused=true; } setPP(paused); }
-function skip(d) { playTrack(qi + d); }
+
+
+
+function skip(d) {
+  // Only special handling for rewind
+  if (d < 0) {
+    const now = Date.now();
+    const isDoubleTap = now - lastRewindTap < 400;
+    lastRewindTap = now;
+
+    // FIRST: if not near start, restart track (playing OR paused)
+    if (aud.currentTime > RESTART_THRESHOLD) {
+      aud.currentTime = 0;
+      setPP(aud.paused); // keep icon in sync
+
+      // reset lyrics
+      if (lrcLines.length) {
+        const first = document.getElementById('lrc-0');
+        if (first) first.scrollIntoView({ block: 'center' });
+      }
+      return;
+    }
+
+    // SECOND: double tap → previous track
+    if (isDoubleTap && qi > 0) {
+      playTrack(qi - 1);
+      return;
+    }
+
+    // THIRD: already at start → previous track if possible
+    if (qi > 0) {
+      playTrack(qi - 1);
+      return;
+    }
+
+    // qi === 0 and already at start → do nothing
+    return;
+  }
+
+  // Forward skip unchanged
+  playTrack(qi + d);
+}
+
+
+
 function setPP(p) {
   document.getElementById('ico-play').style.display = p ? 'none' : 'block';
   document.getElementById('ico-pause').style.display = p ? 'block' : 'none';

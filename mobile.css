@@ -131,4 +131,38 @@
   input[type="range"]:focus {
     outline: none;
   }
+
+  /* Mobile player layout: inline controls */
+  #bar {
+    gap: 8px;
+  }
+
+  /* Hide prev / next on mobile */
+  #b-prev,
+  #b-next {
+    display: none;
+  }
+
+  /* Make center a single row */
+  .b-center {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Make progress bar take all space */
+  .b-prog {
+    flex: 1;
+  }
+
+  /* Keep play button compact */
+  .ic-btn.play-btn {
+    flex-shrink: 0;
+  }
+
+  /* Lyrics button stays inline */
+  .b-right {
+    width: auto;
+    flex-shrink: 0;
+  }
 }

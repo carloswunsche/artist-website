@@ -70,7 +70,9 @@ function debounce(fn, delay) {
 // ============================================================================
 function parseLRC(lrcText) {
   const lines = [];
-  lrcText.split('\n').forEach(line => {
+  lrcText = lrcText.replace(/^\uFEFF/, ''); // Remove BOM
+  lrcText.split(/\r?\n/).forEach(line => {
+    line = line.trim();
     const match = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
     if (!match) return;
     lines.push({
@@ -133,10 +135,9 @@ function startLRCHighlight() {
   }, CONFIG.LRC_UPDATE_INTERVAL);
 }
 
-function updateLyricsPanel(track) {
+async function updateLyricsPanel(track) {
   const btn = DOM.lyricsBtn;
-  const raw = track.lyrics ? track.lyrics.trim() : '';
-  const hasLyrics = raw.length > 0;
+  const hasLyrics = !!(track.lyrics_url || (track.lyrics && track.lyrics.trim()));
 
   btn.classList.toggle('disabled', !hasLyrics);
   if (state.lrcInterval) {
@@ -151,11 +152,31 @@ function updateLyricsPanel(track) {
       DOM.lyricsPanel.classList.remove('up');
       btn.classList.remove('active');
     }
+    DOM.lyricsText.innerHTML = '';
     return;
   }
 
-  if (raw.startsWith('[')) {
+  let raw = '';
+  if (track.lyrics_url) {
+    const lyricsBase = track._base || BASE;
+    const url = resolveUrl(lyricsBase, track.lyrics_url);
+    console.log('Fetching lyrics:', url);
+    const res = await fetch(url);
+    console.log('Response status:', res.status);
+    raw = await res.text();
+    console.log('Raw length:', raw.length);
+  } else if (track.lyrics) {
+    raw = track.lyrics;
+  }
+
+  if (!raw.trim()) {
+    DOM.lyricsText.innerHTML = '<span class="lrc-line">No lyrics available</span>';
+    return;
+  }
+
+  if (raw.trim().startsWith('[')) {
     state.lrcLines = parseLRC(raw);
+    console.log('Parsed lines:', state.lrcLines.length)
     renderLRCLines();
     startLRCHighlight();
   } else {
@@ -230,7 +251,7 @@ function playTrack(index) {
 
   updateTrackInfo(track);
   highlightCurrentTrack(index);
-  updateLyricsPanel(track);
+  updateLyricsPanel(track); // async, no await needed
 }
 
 function loadTrackToPlayer(index) {
@@ -326,14 +347,20 @@ function buildQueue(releases, base) {
   releases.forEach(rel => {
     const relBase = rel._base || base;
     (rel.tracks || []).forEach(t => {
-      const artwork = t.artwork ? resolveUrl(relBase, t.artwork) : (rel.artwork ? resolveUrl(relBase, rel.artwork) : '');
+      // Support both 'cover' and 'artwork' field names
+      const artwork = t.cover ? resolveUrl(relBase, t.cover) 
+                    : (t.artwork ? resolveUrl(relBase, t.artwork) 
+                    : (rel.cover ? resolveUrl(relBase, rel.cover) 
+                    : (rel.artwork ? resolveUrl(relBase, rel.artwork) : '')));
       state.queue.push({
         title: t.title,
         album: rel.title || '',
         src: resolveUrl(relBase, t.src || t.file || t.stream || ''),
         feat: t.feat || '',
         lyrics: t.lyrics || null,
-        artwork: artwork
+        lyrics_url: t.lyrics_url || null,
+        artwork: artwork,
+        _base: relBase // Store release base for relative paths
       });
     });
   });
@@ -342,7 +369,7 @@ function buildQueue(releases, base) {
 function renderTracksHTML(tracks, base, startIdx) {
   return tracks.map((t, i) => {
     const globalIndex = startIdx + i;
-    const artwork = t.artwork ? resolveUrl(base, t.artwork) : '';
+    const artwork = t.cover ? resolveUrl(base, t.cover) : (t.artwork ? resolveUrl(base, t.artwork) : '');
     const art = artwork
       ? `<img class="t-art" src="${escapeHTML(artwork)}" loading="lazy" onerror="this.style.display='none'">`
       : `<div class="t-art-placeholder"></div>`;
@@ -390,7 +417,7 @@ function renderArtist(data, base) {
       releasesHTML += `<div class="singles-header">Singles</div>`;
       releasesHTML += `<div class="singles-list">`;
       tracks.forEach((t, i) => {
-        const artwork = t.artwork ? resolveUrl(relBase, t.artwork) : '';
+        const artwork = t.cover ? resolveUrl(relBase, t.cover) : (t.artwork ? resolveUrl(relBase, t.artwork) : '');
         const art = artwork
           ? `<img class="t-art" src="${escapeHTML(artwork)}" loading="lazy" onerror="this.style.display='none'">`
           : `<div class="t-art-placeholder"></div>`;
@@ -409,13 +436,14 @@ function renderArtist(data, base) {
       releasesHTML += `</div>`;
       trackIndex += tracks.length;
     } else if (tracks.length > 1 || rel.type === 'album' || rel.type === 'ep') {
-      const cover = rel.artwork
-        ? `<img class="album-cv" src="${escapeHTML(resolveUrl(relBase, rel.artwork))}" loading="lazy" onerror="this.style.display='none'">`
+      const cover = rel.cover ? resolveUrl(relBase, rel.cover) : (rel.artwork ? resolveUrl(relBase, rel.artwork) : '');
+      const coverHTML = cover
+        ? `<img class="album-cv" src="${escapeHTML(cover)}" loading="lazy" onerror="this.style.display='none'">`
         : `<div class="album-cv-placeholder" style="background:var(--bg2);width:72px;height:72px;border-radius:var(--r-sm);"></div>`;
       releasesHTML += `
         <div class="album-block">
           <div class="album-hd">
-            ${cover}
+            ${coverHTML}
             <div class="album-meta">
               <strong>${escapeHTML(rel.title)}</strong>
               <span>${escapeHTML(rel.type || 'album')}${rel.year ? ' · ' + rel.year : ''}</span>
@@ -429,7 +457,7 @@ function renderArtist(data, base) {
       trackIndex += tracks.length;
     } else if (tracks.length === 1) {
       const t = tracks[0];
-      const artwork = rel.artwork ? resolveUrl(relBase, rel.artwork) : '';
+      const artwork = t.cover ? resolveUrl(relBase, t.cover) : (t.artwork ? resolveUrl(relBase, t.artwork) : '');
       const art = artwork
         ? `<img class="t-art" src="${escapeHTML(artwork)}" loading="lazy" onerror="this.style.display='none'">`
         : `<div class="t-art-placeholder"></div>`;
@@ -467,7 +495,8 @@ function renderArtist(data, base) {
   (data.releases || []).forEach(rel => {
     const relBase = rel._base || base;
     (rel.tracks || []).forEach((track, i) => {
-      const globalIdx = state.queue.findIndex(q => q.src === resolveUrl(relBase, track.src || track.file || track.stream || ''));
+      const src = track.src || track.file || track.stream || '';
+      const globalIdx = state.queue.findIndex(q => q.src === resolveUrl(relBase, src));
       if (globalIdx !== -1) {
         enqueueDurationLoad(state.queue[globalIdx], `dur-${globalIdx}`);
       }

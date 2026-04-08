@@ -1,7 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
-  <symbol id="prev" viewBox="0 0 16 16"><path d="M3.5 3.5a.5.5 0 0 1 1 0v4l7-4v8l-7-4v4a.5.5 0 0 1-1 0v-8z"/></symbol>
-  <symbol id="next" viewBox="0 0 16 16"><path d="M12.5 3.5a.5.5 0 0 0-1 0v4l-7-4v8l7-4v4a.5.5 0 0 0 1 0v-8z"/></symbol>
-  <symbol id="play" viewBox="0 0 16 16"><path d="M6 3.5a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm3.5 0a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/></symbol>
-  <symbol id="pause" viewBox="0 0 16 16"><path d="M10.804 8 5 4.633v6.734L10.804 8zm.792-.696a.802.802 0 0 1 0 1.392l-6.363 3.692C4.713 12.69 4 12.345 4 11.692V4.308c0-.653.713-.998 1.233-.696l6.363 3.692z"/></symbol>
-  <symbol id="lyrics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+  <!-- Previous: double chevron left -->
+  <symbol id="prev" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M11 6L5 12l6 6M18 6l-6 6 6 6"/>
+  </symbol>
+
+  <!-- Next: double chevron right -->
+  <symbol id="next" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 6l6 6-6 6M6 6l6 6-6 6"/>
+  </symbol>
+
+  <!-- Play (now shows pause bars - action preview) -->
+  <symbol id="play" viewBox="0 0 24 24">
+    <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+    <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+  </symbol>
+
+  <!-- Pause (now shows play triangle - action preview) -->
+  <symbol id="pause" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M8 5.14v14l11-7-11-7z"/>
+  </symbol>
+
+  <!-- Lyrics: hamburger -->
+  <symbol id="lyrics" viewBox="0 0 24 24">
+    <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
 </svg>

@@ -1,333 +1,646 @@
-const JSON_URL = 'https://carloswunsche.github.io/music/artist.json';
-const BASE = JSON_URL.substring(0, JSON_URL.lastIndexOf('/') + 1);
-let queue = [], qi = -1, paused = false;
-const aud = document.getElementById('aud');
-let lyricsOpen = false, lrcLines = [], lrcInterval = null, lrcUserScrolling = false, lrcScrollTimer = null;
-
-let lastRewindTap = 0;
-const RESTART_THRESHOLD = 1.2; // seconds
-
-
-function res(base, p) { return !p ? '' : p.startsWith('http') ? p : base + p; }
-function fmt(s) { if (!s || isNaN(s)) return '0:00'; return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0'); }
-
-function esc(s) {
-  return s
-    ? s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
-    : '';
-}
-
-
-aud.ontimeupdate = () => {
-  document.getElementById('b-cur').textContent = fmt(aud.currentTime);
-  const seek = document.getElementById('b-seek');
-  if (!seek._drag && aud.duration) seek.value = aud.currentTime / aud.duration * 100;
-  if (lrcLines.length) highlightCurrentLine(aud.currentTime);
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+const CONFIG = {
+  JSON_URL: 'https://carloswunsche.github.io/music/artist.json',
+  RESTART_THRESHOLD: 1.2,          // seconds before track restart instead of previous
+  DOUBLE_TAP_DELAY: 400,            // ms
+  TIMELINE_DEBOUNCE_MS: 100,        // throttle UI updates from ontimeupdate
+  DURATION_LOAD_CONCURRENCY: 3,     // max simultaneous metadata requests
+  LRC_UPDATE_INTERVAL: 200,         // ms
+  VOLUME_STORAGE_KEY: 'cw_player_volume',
+  LAST_POSITION_STORAGE_KEY: 'cw_player_last_pos'
 };
 
-aud.ondurationchange = () => { document.getElementById('b-dur').textContent = fmt(aud.duration); };
-aud.onended = () => skip(1);
-const seek = document.getElementById('b-seek');
-seek.addEventListener('mousedown', () => seek._drag = true);
-seek.addEventListener('mouseup', () => { seek._drag = false; aud.currentTime = seek.value / 100 * (aud.duration || 0); });
-seek.addEventListener('touchstart', () => seek._drag = true, {passive:true});
-seek.addEventListener('touchend', () => { seek._drag = false; aud.currentTime = seek.value / 100 * (aud.duration || 0); });
+// ============================================================================
+// GLOBAL STATE
+// ============================================================================
+const state = {
+  // Playback
+  queue: [],
+  currentIndex: -1,
+  paused: true,
 
-function parseLrc(lrc) {
+  // Lyrics
+  lyricsOpen: false,
+  lrcLines: [],
+  lrcInterval: null,
+  lrcUserScrolling: false,
+  lrcScrollTimer: null,
+
+  // UI interaction
+  seekDragging: false,
+  lastRewindTap: 0,
+  durationLoadQueue: [],      // tracks waiting for metadata
+  durationLoadActive: 0
+};
+
+// ============================================================================
+// DOM ELEMENTS (cached after DOM ready)
+// ============================================================================
+let DOM = {};
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+const BASE = CONFIG.JSON_URL.substring(0, CONFIG.JSON_URL.lastIndexOf('/') + 1);
+
+function resolveUrl(base, path) {
+  if (!path) return '';
+  return path.startsWith('http') ? path : base + path;
+}
+
+function formatTime(seconds) {
+  if (!seconds || isNaN(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function escapeHTML(str) {
+  if (!str) return '';
+  return str.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+// Debounce utility
+function debounce(fn, delay) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+// ============================================================================
+// LYRICS PARSING & RENDERING
+// ============================================================================
+function parseLRC(lrcText) {
   const lines = [];
-  lrc.split('\n').forEach(line => {
-    const m = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
-    if (!m) return;
+  lrcText.split('\n').forEach(line => {
+    const match = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
+    if (!match) return;
     lines.push({
-      time: parseInt(m[1], 10) * 60 + parseFloat(m[2]),
-      text: m[3].trim()
+      time: parseInt(match[1], 10) * 60 + parseFloat(match[2]),
+      text: match[3].trim()
     });
   });
   return lines.sort((a, b) => a.time - b.time);
 }
 
-function renderLrcLines() {
-  const container = document.getElementById('lyrics-text');
+function renderLRCLines() {
+  const container = DOM.lyricsText;
   if (!container) return;
-  
-container.innerHTML = lrcLines.map((l, i) =>
-  `<span class="lrc-line" id="lrc-${i}" onclick="seekToLine(${i})">
-     ${esc(l.text)}
-   </span>`
-).join('');
-
-
+  container.innerHTML = state.lrcLines
+    .map((line, i) => `<span class="lrc-line" id="lrc-${i}" data-index="${i}">${escapeHTML(line.text)}</span>`)
+    .join('');
 }
 
 function renderPlainLyrics(text) {
-  const container = document.getElementById('lyrics-text');
-  container.innerHTML = text.split('\n').map((l, i) => l.trim() ? `<span class="lrc-line" id="lrc-${i}">${esc(l)}</span>` : `<span class="lrc-line-blank" id="lrc-${i}"></span>`).join('');
+  const container = DOM.lyricsText;
+  container.innerHTML = text
+    .split('\n')
+    .map((line, i) => line.trim()
+      ? `<span class="lrc-line" id="lrc-${i}" data-index="${i}">${escapeHTML(line)}</span>`
+      : `<span class="lrc-line-blank" id="lrc-${i}"></span>`)
+    .join('');
 }
 
 function highlightCurrentLine(currentTime) {
-  let active = -1;
-  for (let i = 0; i < lrcLines.length; i++) {
-    if (lrcLines[i].time <= currentTime) active = i;
+  let activeIndex = -1;
+  for (let i = 0; i < state.lrcLines.length; i++) {
+    if (state.lrcLines[i].time <= currentTime) activeIndex = i;
   }
-  lrcLines.forEach((_, i) => {
+
+  state.lrcLines.forEach((_, i) => {
     const el = document.getElementById(`lrc-${i}`);
-    if (el) el.classList.toggle('active', i === active);
+    if (el) el.classList.toggle('active', i === activeIndex);
   });
-  // Auto-scroll only if not manually scrolling
-  if (!lrcUserScrolling && active >= 0) {
-    const activeEl = document.getElementById(`lrc-${active}`);
+
+  if (!state.lrcUserScrolling && activeIndex >= 0) {
+    const activeEl = document.getElementById(`lrc-${activeIndex}`);
     if (activeEl) activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
-function startLrcHighlight() {
-  if (lrcInterval) clearInterval(lrcInterval);
-  const scrollDiv = document.getElementById('lyrics-scroll');
+function startLRCHighlight() {
+  if (state.lrcInterval) clearInterval(state.lrcInterval);
+  const scrollDiv = DOM.lyricsScroll;
   if (scrollDiv) {
     scrollDiv.onscroll = () => {
-      lrcUserScrolling = true;
-      clearTimeout(lrcScrollTimer);
-      lrcScrollTimer = setTimeout(() => { lrcUserScrolling = false; }, 2000);
+      state.lrcUserScrolling = true;
+      clearTimeout(state.lrcScrollTimer);
+      state.lrcScrollTimer = setTimeout(() => { state.lrcUserScrolling = false; }, 2000);
     };
   }
-  lrcInterval = setInterval(() => {
-    if (lrcLines.length && aud.src && !aud.paused) highlightCurrentLine(aud.currentTime);
-  }, 200);
+  state.lrcInterval = setInterval(() => {
+    if (state.lrcLines.length && DOM.aud.src && !DOM.aud.paused) {
+      highlightCurrentLine(DOM.aud.currentTime);
+    }
+  }, CONFIG.LRC_UPDATE_INTERVAL);
 }
 
 function updateLyricsPanel(track) {
-  const btn = document.getElementById('lyrics-btn');
-  let raw = track.lyrics ? track.lyrics.trim() : '';
-  const has = raw && raw.length > 0;
-  
-  btn.classList.toggle('disabled', !has);
-  if (lrcInterval) { clearInterval(lrcInterval); lrcInterval = null; }
-  lrcLines = [];
-  
-  if (!has) {
-    // No lyrics: close panel if open
-    if (lyricsOpen) {
-      lyricsOpen = false;
-      document.getElementById('lyrics-panel').classList.remove('up');
+  const btn = DOM.lyricsBtn;
+  const raw = track.lyrics ? track.lyrics.trim() : '';
+  const hasLyrics = raw.length > 0;
+
+  btn.classList.toggle('disabled', !hasLyrics);
+  if (state.lrcInterval) {
+    clearInterval(state.lrcInterval);
+    state.lrcInterval = null;
+  }
+  state.lrcLines = [];
+
+  if (!hasLyrics) {
+    if (state.lyricsOpen) {
+      state.lyricsOpen = false;
+      DOM.lyricsPanel.classList.remove('up');
       btn.classList.remove('active');
     }
     return;
   }
-  
-  // Has lyrics: parse and render
+
   if (raw.startsWith('[')) {
-    lrcLines = parseLrc(raw);
-    renderLrcLines();
-    startLrcHighlight();
+    state.lrcLines = parseLRC(raw);
+    renderLRCLines();
+    startLRCHighlight();
   } else {
     renderPlainLyrics(raw);
   }
-  
-  // If panel was already open, keep it open (don't toggle)
-  if (lyricsOpen) {
-    document.getElementById('lyrics-panel').classList.add('up');
+
+  if (state.lyricsOpen) {
+    DOM.lyricsPanel.classList.add('up');
     btn.classList.add('active');
   }
 }
 
-function seekToLine(idx) {
-  if (!lrcLines[idx]) return;
-  lrcUserScrolling = true;
-  clearTimeout(lrcScrollTimer);
-  aud.currentTime = lrcLines[idx].time;
-  const el = document.getElementById(`lrc-${idx}`);
+function seekToLine(index) {
+  if (!state.lrcLines[index]) return;
+  state.lrcUserScrolling = true;
+  clearTimeout(state.lrcScrollTimer);
+  DOM.aud.currentTime = state.lrcLines[index].time;
+  const el = document.getElementById(`lrc-${index}`);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  lrcScrollTimer = setTimeout(() => { lrcUserScrolling = false; }, 2000);
-  highlightCurrentLine(aud.currentTime);
-}
-function applyLyricsOpen(open) { document.getElementById('lyrics-panel').classList.toggle('up', open); }
-function toggleLyrics() {
-  const btn = document.getElementById('lyrics-btn');
-  if (btn.classList.contains('disabled')) return;
-  lyricsOpen = !lyricsOpen;
-  const panel = document.getElementById('lyrics-panel');
-  if (lyricsOpen) {
-    panel.classList.add('up');
-    btn.classList.add('active');
-  } else {
-    panel.classList.remove('up');
-    btn.classList.remove('active');
-  }
+  state.lrcScrollTimer = setTimeout(() => { state.lrcUserScrolling = false; }, 2000);
+  highlightCurrentLine(DOM.aud.currentTime);
 }
 
-function playTrack(i) {
-  if (i < 0 || i >= queue.length) return;
-  qi = i;
-  const t = queue[i];
-  aud.src = t.src;
-  aud.play().catch(()=>{});
-  paused = false;
-  setPP(false);
-  document.getElementById('b-title').textContent = t.title;
-  let album = t.album || '';
+// ============================================================================
+// PLAYBACK CONTROL
+// ============================================================================
+function setPlayPauseIcon(paused) {
+  DOM.icoPlay.style.display = paused ? 'none' : 'block';
+  DOM.icoPause.style.display = paused ? 'block' : 'none';
+}
+
+function updateTrackInfo(track) {
+  DOM.bTitle.textContent = track.title;
+  let album = track.album || '';
   if (album.toLowerCase() === 'singles') album = '';
-  document.getElementById('b-sub').textContent = album;
-  document.getElementById('bar').classList.add('on');
-  document.querySelectorAll('.track').forEach((el, idx) => el.classList.toggle('playing', idx === i));
-  document.querySelectorAll('.t-num').forEach((el, idx) => { el.innerHTML = idx === i ? '▶' : idx + 1; });
-  updateLyricsPanel(t);
+  DOM.bSub.textContent = album;
+  DOM.bar.classList.add('on');
 }
 
-function togglePlay() { if (aud.paused) { aud.play(); paused=false; } else { aud.pause(); paused=true; } setPP(paused); }
+function highlightCurrentTrack(index) {
+  document.querySelectorAll('.track').forEach((el, i) => {
+    el.classList.toggle('playing', i === index);
+  });
+  document.querySelectorAll('.t-num').forEach((el, i) => {
+    el.innerHTML = i === index ? '▶' : i + 1;
+  });
+}
 
+function playTrack(index) {
+  if (index < 0 || index >= state.queue.length) return;
 
+  state.currentIndex = index;
+  const track = state.queue[index];
+  DOM.aud.src = track.src;
+  DOM.aud.play().catch(() => {});
+  state.paused = false;
+  setPlayPauseIcon(false);
 
-function skip(d) {
-  // Only special handling for rewind
-  if (d < 0) {
+  updateTrackInfo(track);
+  highlightCurrentTrack(index);
+  updateLyricsPanel(track);
+
+  // Save last position intent (we'll store actual time on pause/unload)
+}
+
+function loadTrackToPlayer(index) {
+  if (index < 0 || index >= state.queue.length) return;
+  state.currentIndex = index;
+  const track = state.queue[index];
+  DOM.aud.src = track.src;
+  DOM.aud.load();
+  state.paused = true;
+  setPlayPauseIcon(true);
+  updateTrackInfo(track);
+  highlightCurrentTrack(index);
+  updateLyricsPanel(track);
+}
+
+function togglePlay() {
+  if (DOM.aud.paused) {
+    DOM.aud.play();
+    state.paused = false;
+  } else {
+    DOM.aud.pause();
+    state.paused = true;
+  }
+  setPlayPauseIcon(state.paused);
+}
+
+function skip(direction) {
+  // Rewind special handling
+  if (direction < 0) {
     const now = Date.now();
-    const isDoubleTap = now - lastRewindTap < 400;
-    lastRewindTap = now;
+    const isDoubleTap = now - state.lastRewindTap < CONFIG.DOUBLE_TAP_DELAY;
+    state.lastRewindTap = now;
 
-    // FIRST: if not near start, restart track (playing OR paused)
-    if (aud.currentTime > RESTART_THRESHOLD) {
-      aud.currentTime = 0;
-      setPP(aud.paused); // keep icon in sync
-
-      // reset lyrics
-      if (lrcLines.length) {
-        const first = document.getElementById('lrc-0');
-        if (first) first.scrollIntoView({ block: 'center' });
+    if (DOM.aud.currentTime > CONFIG.RESTART_THRESHOLD) {
+      DOM.aud.currentTime = 0;
+      setPlayPauseIcon(state.paused);
+      if (state.lrcLines.length) {
+        const firstLine = document.getElementById('lrc-0');
+        if (firstLine) firstLine.scrollIntoView({ block: 'center' });
       }
       return;
     }
 
-    // SECOND: double tap → previous track
-    if (isDoubleTap && qi > 0) {
-      playTrack(qi - 1);
+    if (isDoubleTap && state.currentIndex > 0) {
+      playTrack(state.currentIndex - 1);
       return;
     }
 
-    // THIRD: already at start → previous track if possible
-    if (qi > 0) {
-      playTrack(qi - 1);
+    if (state.currentIndex > 0) {
+      playTrack(state.currentIndex - 1);
       return;
     }
-
-    // qi === 0 and already at start → do nothing
     return;
   }
 
-  // Forward skip unchanged
-  playTrack(qi + d);
+  // Forward skip
+  playTrack(state.currentIndex + direction);
 }
 
+// ============================================================================
+// DURATION LOADING (batched)
+// ============================================================================
+function loadNextDuration() {
+  if (state.durationLoadActive >= CONFIG.DURATION_LOAD_CONCURRENCY) return;
+  if (state.durationLoadQueue.length === 0) return;
 
+  const { track, elementId } = state.durationLoadQueue.shift();
+  state.durationLoadActive++;
 
-function setPP(p) {
-  document.getElementById('ico-play').style.display = p ? 'none' : 'block';
-  document.getElementById('ico-pause').style.display = p ? 'block' : 'none';
+  const audio = new Audio();
+  audio.preload = 'metadata';
+  audio.src = track.src;
+  audio.onloadedmetadata = () => {
+    const el = document.getElementById(elementId);
+    if (el) el.textContent = formatTime(audio.duration);
+    state.durationLoadActive--;
+    loadNextDuration(); // continue
+  };
+  audio.onerror = () => {
+    state.durationLoadActive--;
+    loadNextDuration();
+  };
 }
 
-function renderTracks(tracks, base, startIdx) {
-  return tracks.map((t, i) => {
-    const gi = startIdx + i;
-    const art = t.artwork ? `<img class="t-art" src="${esc(res(base, t.artwork))}" loading="lazy" onerror="this.style.display='none'">` : '';
-    return `<div class="track" data-qi="${gi}" onclick="playTrack(${gi})"><span class="t-num">${i+1}</span>${art}<div class="t-info"><strong>${esc(t.title)}</strong><span>${esc(t.feat||'')}</span></div><span class="t-dur" id="dur-${gi}">—</span></div>`;
-  }).join('');
+function enqueueDurationLoad(track, elementId) {
+  state.durationLoadQueue.push({ track, elementId });
+  loadNextDuration();
 }
 
-function loadDurations(tracks, base, startIdx) {
-  tracks.forEach((t, i) => {
-    if (!t.src && !t.file && !t.stream) return;
-    const a = new Audio();
-    a.preload = 'metadata';
-    a.src = res(base, t.src || t.file || t.stream);
-    a.onloadedmetadata = () => { const el = document.getElementById('dur-'+(startIdx+i)); if (el) el.textContent = fmt(a.duration); };
-  });
-}
-
+// ============================================================================
+// RENDERING ARTIST & TRACKS
+// ============================================================================
 function buildQueue(releases, base) {
-  queue = [];
+  state.queue = [];
   releases.forEach(rel => {
-    const rb = rel._base || base;
+    const relBase = rel._base || base;
     (rel.tracks || []).forEach(t => {
-      queue.push({ title: t.title, album: rel.title || '', src: res(rb, t.src || t.file || t.stream || ''), feat: t.feat || '', lyrics: t.lyrics || null });
+      state.queue.push({
+        title: t.title,
+        album: rel.title || '',
+        src: resolveUrl(relBase, t.src || t.file || t.stream || ''),
+        feat: t.feat || '',
+        lyrics: t.lyrics || null
+      });
     });
   });
 }
 
-function loadTrackToPlayer(i) {
-  if (i < 0 || i >= queue.length) return;
-  qi = i;
-  const t = queue[i];
-  aud.src = t.src;
-  aud.load(); // preload but don't play
-  paused = true;
-  setPP(true);
-  document.getElementById('b-title').textContent = t.title;
-  let album = t.album || '';
-  if (album.toLowerCase() === 'singles') album = '';
-  document.getElementById('b-sub').textContent = album;
-  document.getElementById('bar').classList.add('on');
-  // Highlight track in list
-  document.querySelectorAll('.track').forEach((el, idx) => el.classList.toggle('playing', idx === i));
-  document.querySelectorAll('.t-num').forEach((el, idx) => { el.innerHTML = idx === i ? '▶' : idx + 1; });
-  updateLyricsPanel(t);
+function renderTracksHTML(tracks, base, startIdx) {
+  return tracks.map((t, i) => {
+    const globalIndex = startIdx + i;
+    const art = t.artwork
+      ? `<img class="t-art" src="${escapeHTML(resolveUrl(base, t.artwork))}" loading="lazy" onerror="this.style.display='none'">`
+      : '';
+    return `
+      <div class="track" data-qi="${globalIndex}">
+        <span class="t-num">${i + 1}</span>
+        ${art}
+        <div class="t-info">
+          <strong>${escapeHTML(t.title)}</strong>
+          <span>${escapeHTML(t.feat || '')}</span>
+        </div>
+        <span class="t-dur" id="dur-${globalIndex}">—</span>
+      </div>
+    `;
+  }).join('');
 }
 
-function renderArtist(d, base) {
-  const root = document.getElementById('root');
-  const av = d.avatar ? `<img class="av" src="${esc(res(base, d.avatar))}" onerror="this.outerHTML='<div class=av-ph>🎵</div>'">` : '<div class="av-ph">🎵</div>';
-  const linkMap = { instagram:'Instagram', youtube:'YouTube', spotify:'Spotify', bandcamp:'Bandcamp', soundcloud:'SoundCloud', twitter:'Twitter', facebook:'Facebook', tiktok:'TikTok', website:'Website' };
-  const links = d.links ? Object.entries(d.links).map(([k,v]) => `<a class="lnk" href="${esc(v)}" target="_blank" rel="noopener">${linkMap[k]||k}</a>`).join('') : '';
-  let relHTML = '', idx = 0;
-  (d.releases || []).forEach(rel => {
-    const rb = rel._base || base;
+function renderArtist(data, base) {
+  const root = DOM.root;
+  const avatar = data.avatar
+    ? `<img class="av" src="${escapeHTML(resolveUrl(base, data.avatar))}" onerror="this.outerHTML='<div class=av-ph>🎵</div>'">`
+    : '<div class="av-ph">🎵</div>';
+
+  const linkMap = {
+    instagram: 'Instagram', youtube: 'YouTube', spotify: 'Spotify',
+    bandcamp: 'Bandcamp', soundcloud: 'SoundCloud', twitter: 'Twitter',
+    facebook: 'Facebook', tiktok: 'TikTok', website: 'Website'
+  };
+  const links = data.links
+    ? Object.entries(data.links)
+        .map(([k, v]) => `<a class="lnk" href="${escapeHTML(v)}" target="_blank" rel="noopener">${linkMap[k] || k}</a>`)
+        .join('')
+    : '';
+
+  let releasesHTML = '';
+  let trackIndex = 0;
+
+  (data.releases || []).forEach(rel => {
+    const relBase = rel._base || base;
     const tracks = rel.tracks || [];
-    const startIdx = idx;
-    // Treat any release with type 'singles' as flat list (no header)
+    const startIdx = trackIndex;
+
     if (rel.type === 'singles') {
-      tracks.forEach((t, ti) => {
-        const art = t.artwork ? `<img class="t-art" src="${esc(res(rb, t.artwork))}" loading="lazy" onerror="this.style.display='none'">` : '';
-        relHTML += `<div class="track" onclick="playTrack(${startIdx + ti})">
-          <span class="t-num">${startIdx + ti + 1}</span>${art}
-          <div class="t-info"><strong>${esc(t.title)}</strong><span>${esc(rel.year || '')}</span></div>
-          <span class="t-dur" id="dur-${startIdx + ti}">—</span>
-        </div>`;
+      tracks.forEach((t, i) => {
+        const art = t.artwork
+          ? `<img class="t-art" src="${escapeHTML(resolveUrl(relBase, t.artwork))}" loading="lazy" onerror="this.style.display='none'">`
+          : '';
+        releasesHTML += `
+          <div class="track" data-qi="${startIdx + i}">
+            <span class="t-num">${startIdx + i + 1}</span>
+            ${art}
+            <div class="t-info">
+              <strong>${escapeHTML(t.title)}</strong>
+              <span>${escapeHTML(rel.year || '')}</span>
+            </div>
+            <span class="t-dur" id="dur-${startIdx + i}">—</span>
+          </div>
+        `;
       });
-      idx += tracks.length;
-    }
-    else if (tracks.length > 1 || rel.type === 'album' || rel.type === 'ep') {
-      const cover = rel.artwork ? `<img class="album-cv" src="${esc(res(rb, rel.artwork))}" loading="lazy" onerror="this.style.display='none'">` : '';
-      relHTML += `<div class="album-block"><div class="album-hd">${cover}<div class="album-meta"><strong>${esc(rel.title)}</strong><span>${esc(rel.type||'album')}${rel.year?' · '+rel.year:''}</span></div></div><div class="track-list">${renderTracks(tracks, rb, startIdx)}</div></div>`;
-      idx += tracks.length;
+      trackIndex += tracks.length;
+    } else if (tracks.length > 1 || rel.type === 'album' || rel.type === 'ep') {
+      const cover = rel.artwork
+        ? `<img class="album-cv" src="${escapeHTML(resolveUrl(relBase, rel.artwork))}" loading="lazy" onerror="this.style.display='none'">`
+        : '';
+      releasesHTML += `
+        <div class="album-block">
+          <div class="album-hd">
+            ${cover}
+            <div class="album-meta">
+              <strong>${escapeHTML(rel.title)}</strong>
+              <span>${escapeHTML(rel.type || 'album')}${rel.year ? ' · ' + rel.year : ''}</span>
+            </div>
+          </div>
+          <div class="track-list">
+            ${renderTracksHTML(tracks, relBase, startIdx)}
+          </div>
+        </div>
+      `;
+      trackIndex += tracks.length;
     } else if (tracks.length === 1) {
       const t = tracks[0];
-      const art = rel.artwork ? `<img class="t-art" src="${esc(res(rb, rel.artwork))}" loading="lazy" onerror="this.style.display='none'">` : '';
-      relHTML += `<div class="track" onclick="playTrack(${startIdx})">
-        <span class="t-num">${startIdx+1}</span>${art}
-        <div class="t-info"><strong>${esc(t.title)}</strong><span>${esc(rel.year||'')}</span></div>
-        <span class="t-dur" id="dur-${startIdx}">—</span>
-      </div>`;
-      idx += tracks.length;
+      const art = rel.artwork
+        ? `<img class="t-art" src="${escapeHTML(resolveUrl(relBase, rel.artwork))}" loading="lazy" onerror="this.style.display='none'">`
+        : '';
+      releasesHTML += `
+        <div class="track" data-qi="${startIdx}">
+          <span class="t-num">${startIdx + 1}</span>
+          ${art}
+          <div class="t-info">
+            <strong>${escapeHTML(t.title)}</strong>
+            <span>${escapeHTML(rel.year || '')}</span>
+          </div>
+          <span class="t-dur" id="dur-${startIdx}">—</span>
+        </div>
+      `;
+      trackIndex++;
     }
   });
-  root.innerHTML = `<div class="hd">${av}<div class="hd-info"><h1>${esc(d.name)}</h1>${d.location?`<div class="loc">${esc(d.location)}</div>`:''}${d.bio?`<p class="bio">${esc(d.bio)}</p>`:''}${links?`<div class="links">${links}</div>`:''}</div></div>${relHTML || '<p class="msg">No releases yet.</p>'}`;
-  buildQueue(d.releases || [], base);
-  (d.releases || []).forEach((rel, ri) => loadDurations(rel.tracks||[], rel._base||base, (d.releases||[]).slice(0,ri).reduce((a,r)=>a+(r.tracks||[]).length,0)));
+
+  root.innerHTML = `
+    <div class="hd">
+      ${avatar}
+      <div class="hd-info">
+        <h1>${escapeHTML(data.name)}</h1>
+        ${data.location ? `<div class="loc">${escapeHTML(data.location)}</div>` : ''}
+        ${data.bio ? `<p class="bio">${escapeHTML(data.bio)}</p>` : ''}
+        ${links ? `<div class="links">${links}</div>` : ''}
+      </div>
+    </div>
+    ${releasesHTML || '<p class="msg">No releases yet.</p>'}
+  `;
+
+  buildQueue(data.releases || [], base);
+
+  // Enqueue duration loads
+  (data.releases || []).forEach(rel => {
+    const relBase = rel._base || base;
+    (rel.tracks || []).forEach((track, i) => {
+      const globalIdx = state.queue.findIndex(q => q.src === resolveUrl(relBase, track.src || track.file || track.stream || ''));
+      if (globalIdx !== -1) {
+        enqueueDurationLoad(state.queue[globalIdx], `dur-${globalIdx}`);
+      }
+    });
+  });
 }
 
-async function resolveRelease(base, ref) {
-  if (typeof ref !== 'string') { if (!ref._base) ref._base = base; return ref; }
-  const url = res(base, ref), r = await fetch(url); if (!r.ok) return null;
-  const d = await r.json(); d._base = url.substring(0,url.lastIndexOf('/')+1); return d;
-}
-async function boot() {
-  try {
-    const r = await fetch(JSON_URL); if (!r.ok) throw new Error('HTTP '+r.status);
-    const d = await r.json();
-    if (d.name) document.title = d.name;
-    if (d.releases) d.releases = (await Promise.all(d.releases.map(ref => resolveRelease(BASE, ref)))).filter(Boolean);
-    renderArtist(d, BASE);
-    if (queue.length && !document.getElementById('bar').classList.contains('on')) {
-      loadTrackToPlayer(0);
+// ============================================================================
+// EVENT HANDLERS & INITIALIZATION
+// ============================================================================
+function setupEventListeners() {
+  // Audio events
+  DOM.aud.ontimeupdate = debounce(() => {
+    DOM.bCur.textContent = formatTime(DOM.aud.currentTime);
+    if (!state.seekDragging && DOM.aud.duration) {
+      DOM.bSeek.value = (DOM.aud.currentTime / DOM.aud.duration) * 100;
     }
-  } catch(e) { document.getElementById('root').innerHTML = `<p class="msg">Could not load — ${esc(e.message)}</p>`; }
+    if (state.lrcLines.length) {
+      highlightCurrentLine(DOM.aud.currentTime);
+    }
+  }, CONFIG.TIMELINE_DEBOUNCE_MS);
+
+  DOM.aud.ondurationchange = () => {
+    DOM.bDur.textContent = formatTime(DOM.aud.duration);
+  };
+
+  DOM.aud.onended = () => skip(1);
+
+  // Seek bar
+  DOM.bSeek.addEventListener('mousedown', () => { state.seekDragging = true; });
+  DOM.bSeek.addEventListener('mouseup', () => {
+    state.seekDragging = false;
+    DOM.aud.currentTime = (DOM.bSeek.value / 100) * (DOM.aud.duration || 0);
+  });
+  DOM.bSeek.addEventListener('touchstart', () => { state.seekDragging = true; }, { passive: true });
+  DOM.bSeek.addEventListener('touchend', () => {
+    state.seekDragging = false;
+    DOM.aud.currentTime = (DOM.bSeek.value / 100) * (DOM.aud.duration || 0);
+  });
+
+  // Track click delegation (avoid inline onclick)
+  document.addEventListener('click', e => {
+    const trackDiv = e.target.closest('.track');
+    if (!trackDiv) return;
+    const qi = trackDiv.dataset.qi;
+    if (qi !== undefined) {
+      playTrack(parseInt(qi, 10));
+    }
+  });
+
+  // Lyrics line click delegation
+  DOM.lyricsText.addEventListener('click', e => {
+    const line = e.target.closest('.lrc-line');
+    if (!line) return;
+    const idx = line.dataset.index;
+    if (idx !== undefined && state.lrcLines[idx]) {
+      seekToLine(parseInt(idx, 10));
+    }
+  });
+
+  // Lyrics panel toggle
+  DOM.lyricsBtn.addEventListener('click', () => {
+    if (DOM.lyricsBtn.classList.contains('disabled')) return;
+    state.lyricsOpen = !state.lyricsOpen;
+    DOM.lyricsPanel.classList.toggle('up', state.lyricsOpen);
+    DOM.lyricsBtn.classList.toggle('active', state.lyricsOpen);
+  });
+
+  // Play/pause button
+  DOM.bPp.addEventListener('click', togglePlay);
+
+  // Prev/next
+  DOM.bPrev.addEventListener('click', () => skip(-1));
+  DOM.bNext.addEventListener('click', () => skip(1));
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    switch (e.code) {
+      case 'Space':
+        e.preventDefault();
+        togglePlay();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) skip(-1);
+        else DOM.aud.currentTime = Math.max(0, DOM.aud.currentTime - 5);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) skip(1);
+        else DOM.aud.currentTime = Math.min(DOM.aud.duration, DOM.aud.currentTime + 5);
+        break;
+    }
+  });
+
+  // Save volume and last position
+  window.addEventListener('beforeunload', () => {
+    if (DOM.aud.src) {
+      localStorage.setItem(CONFIG.LAST_POSITION_STORAGE_KEY, DOM.aud.currentTime);
+    }
+    localStorage.setItem(CONFIG.VOLUME_STORAGE_KEY, DOM.aud.volume);
+  });
+
+  // Restore volume
+  const savedVolume = localStorage.getItem(CONFIG.VOLUME_STORAGE_KEY);
+  if (savedVolume !== null) {
+    DOM.aud.volume = parseFloat(savedVolume);
+  }
 }
-boot();
+
+// ============================================================================
+// BOOTSTRAP
+// ============================================================================
+async function resolveRelease(base, ref) {
+  if (typeof ref !== 'string') {
+    if (!ref._base) ref._base = base;
+    return ref;
+  }
+  const url = resolveUrl(base, ref);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    data._base = url.substring(0, url.lastIndexOf('/') + 1);
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+async function boot() {
+  // Cache DOM elements
+  DOM = {
+    aud: document.getElementById('aud'),
+    bCur: document.getElementById('b-cur'),
+    bDur: document.getElementById('b-dur'),
+    bSeek: document.getElementById('b-seek'),
+    bTitle: document.getElementById('b-title'),
+    bSub: document.getElementById('b-sub'),
+    bar: document.getElementById('bar'),
+    icoPlay: document.getElementById('ico-play'),
+    icoPause: document.getElementById('ico-pause'),
+    lyricsBtn: document.getElementById('lyrics-btn'),
+    lyricsPanel: document.getElementById('lyrics-panel'),
+    lyricsScroll: document.getElementById('lyrics-scroll'),
+    lyricsText: document.getElementById('lyrics-text'),
+    root: document.getElementById('root'),
+    bPrev: document.getElementById('b-prev'),
+    bNext: document.getElementById('b-next'),
+    bPp: document.getElementById('b-pp')
+  };
+
+  setupEventListeners();
+
+  try {
+    const response = await fetch(CONFIG.JSON_URL);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+
+    if (data.name) document.title = data.name;
+
+    if (data.releases) {
+      data.releases = (await Promise.all(
+        data.releases.map(ref => resolveRelease(BASE, ref))
+      )).filter(Boolean);
+    }
+
+    renderArtist(data, BASE);
+
+    if (state.queue.length && !DOM.bar.classList.contains('on')) {
+      // Try to restore last position
+      const lastPos = localStorage.getItem(CONFIG.LAST_POSITION_STORAGE_KEY);
+      loadTrackToPlayer(0);
+      if (lastPos !== null) {
+        DOM.aud.currentTime = parseFloat(lastPos) || 0;
+      }
+    }
+  } catch (error) {
+    DOM.root.innerHTML = `<p class="msg">Could not load — ${escapeHTML(error.message)}</p>`;
+  }
+}
+
+// Start when DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}

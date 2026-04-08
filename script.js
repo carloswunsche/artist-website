@@ -3,11 +3,11 @@
 // ============================================================================
 const CONFIG = {
   JSON_URL: 'https://carloswunsche.github.io/music/artist.json',
-  RESTART_THRESHOLD: 1.2,          // seconds before track restart instead of previous
-  DOUBLE_TAP_DELAY: 400,            // ms
-  TIMELINE_DEBOUNCE_MS: 100,        // throttle UI updates from ontimeupdate
-  DURATION_LOAD_CONCURRENCY: 3,     // max simultaneous metadata requests
-  LRC_UPDATE_INTERVAL: 200,         // ms
+  RESTART_THRESHOLD: 1.2,
+  DOUBLE_TAP_DELAY: 400,
+  TIMELINE_DEBOUNCE_MS: 100,
+  DURATION_LOAD_CONCURRENCY: 3,
+  LRC_UPDATE_INTERVAL: 200,
   VOLUME_STORAGE_KEY: 'cw_player_volume',
   LAST_POSITION_STORAGE_KEY: 'cw_player_last_pos'
 };
@@ -16,27 +16,22 @@ const CONFIG = {
 // GLOBAL STATE
 // ============================================================================
 const state = {
-  // Playback
   queue: [],
   currentIndex: -1,
   paused: true,
-
-  // Lyrics
   lyricsOpen: false,
   lrcLines: [],
   lrcInterval: null,
   lrcUserScrolling: false,
   lrcScrollTimer: null,
-
-  // UI interaction
   seekDragging: false,
   lastRewindTap: 0,
-  durationLoadQueue: [],      // tracks waiting for metadata
+  durationLoadQueue: [],
   durationLoadActive: 0
 };
 
 // ============================================================================
-// DOM ELEMENTS (cached after DOM ready)
+// DOM ELEMENTS
 // ============================================================================
 let DOM = {};
 
@@ -62,7 +57,6 @@ function escapeHTML(str) {
   return str.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 }
 
-// Debounce utility
 function debounce(fn, delay) {
   let timer = null;
   return (...args) => {
@@ -198,15 +192,29 @@ function updateTrackInfo(track) {
   let album = track.album || '';
   if (album.toLowerCase() === 'singles') album = '';
   DOM.bSub.textContent = album;
+
+  const img = DOM.pCover;
+  if (track.artwork) {
+    img.src = track.artwork;
+    img.style.display = 'block';
+    img.nextElementSibling.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    img.nextElementSibling.style.display = 'block';
+  }
+
   DOM.bar.classList.add('on');
 }
 
 function highlightCurrentTrack(index) {
-  document.querySelectorAll('.track').forEach((el, i) => {
+  document.querySelectorAll('.track, .track-singles').forEach((el, i) => {
     el.classList.toggle('playing', i === index);
   });
   document.querySelectorAll('.t-num').forEach((el, i) => {
     el.innerHTML = i === index ? '▶' : i + 1;
+  });
+  document.querySelectorAll('.t-now-icon').forEach((el, i) => {
+    if (el) el.style.display = i === index ? 'flex' : 'none';
   });
 }
 
@@ -223,8 +231,6 @@ function playTrack(index) {
   updateTrackInfo(track);
   highlightCurrentTrack(index);
   updateLyricsPanel(track);
-
-  // Save last position intent (we'll store actual time on pause/unload)
 }
 
 function loadTrackToPlayer(index) {
@@ -252,7 +258,6 @@ function togglePlay() {
 }
 
 function skip(direction) {
-  // Rewind special handling
   if (direction < 0) {
     const now = Date.now();
     const isDoubleTap = now - state.lastRewindTap < CONFIG.DOUBLE_TAP_DELAY;
@@ -280,7 +285,6 @@ function skip(direction) {
     return;
   }
 
-  // Forward skip
   playTrack(state.currentIndex + direction);
 }
 
@@ -301,7 +305,7 @@ function loadNextDuration() {
     const el = document.getElementById(elementId);
     if (el) el.textContent = formatTime(audio.duration);
     state.durationLoadActive--;
-    loadNextDuration(); // continue
+    loadNextDuration();
   };
   audio.onerror = () => {
     state.durationLoadActive--;
@@ -322,12 +326,14 @@ function buildQueue(releases, base) {
   releases.forEach(rel => {
     const relBase = rel._base || base;
     (rel.tracks || []).forEach(t => {
+      const artwork = t.artwork ? resolveUrl(relBase, t.artwork) : (rel.artwork ? resolveUrl(relBase, rel.artwork) : '');
       state.queue.push({
         title: t.title,
         album: rel.title || '',
         src: resolveUrl(relBase, t.src || t.file || t.stream || ''),
         feat: t.feat || '',
-        lyrics: t.lyrics || null
+        lyrics: t.lyrics || null,
+        artwork: artwork
       });
     });
   });
@@ -336,12 +342,14 @@ function buildQueue(releases, base) {
 function renderTracksHTML(tracks, base, startIdx) {
   return tracks.map((t, i) => {
     const globalIndex = startIdx + i;
-    const art = t.artwork
-      ? `<img class="t-art" src="${escapeHTML(resolveUrl(base, t.artwork))}" loading="lazy" onerror="this.style.display='none'">`
-      : '';
+    const artwork = t.artwork ? resolveUrl(base, t.artwork) : '';
+    const art = artwork
+      ? `<img class="t-art" src="${escapeHTML(artwork)}" loading="lazy" onerror="this.style.display='none'">`
+      : `<div class="t-art-placeholder"></div>`;
     return `
       <div class="track" data-qi="${globalIndex}">
         <span class="t-num">${i + 1}</span>
+        <span class="t-now-icon" style="display:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><use href="icons.svg#play-small"/></svg></span>
         ${art}
         <div class="t-info">
           <strong>${escapeHTML(t.title)}</strong>
@@ -379,27 +387,31 @@ function renderArtist(data, base) {
     const startIdx = trackIndex;
 
     if (rel.type === 'singles') {
+      releasesHTML += `<div class="singles-header">Singles</div>`;
+      releasesHTML += `<div class="singles-list">`;
       tracks.forEach((t, i) => {
-        const art = t.artwork
-          ? `<img class="t-art" src="${escapeHTML(resolveUrl(relBase, t.artwork))}" loading="lazy" onerror="this.style.display='none'">`
-          : '';
+        const artwork = t.artwork ? resolveUrl(relBase, t.artwork) : '';
+        const art = artwork
+          ? `<img class="t-art" src="${escapeHTML(artwork)}" loading="lazy" onerror="this.style.display='none'">`
+          : `<div class="t-art-placeholder"></div>`;
         releasesHTML += `
-          <div class="track" data-qi="${startIdx + i}">
-            <span class="t-num">${startIdx + i + 1}</span>
+          <div class="track-singles" data-qi="${startIdx + i}">
             ${art}
             <div class="t-info">
               <strong>${escapeHTML(t.title)}</strong>
               <span>${escapeHTML(rel.year || '')}</span>
             </div>
+            <span class="t-now-icon" style="display:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><use href="icons.svg#play-small"/></svg></span>
             <span class="t-dur" id="dur-${startIdx + i}">—</span>
           </div>
         `;
       });
+      releasesHTML += `</div>`;
       trackIndex += tracks.length;
     } else if (tracks.length > 1 || rel.type === 'album' || rel.type === 'ep') {
       const cover = rel.artwork
         ? `<img class="album-cv" src="${escapeHTML(resolveUrl(relBase, rel.artwork))}" loading="lazy" onerror="this.style.display='none'">`
-        : '';
+        : `<div class="album-cv-placeholder" style="background:var(--bg2);width:72px;height:72px;border-radius:var(--r-sm);"></div>`;
       releasesHTML += `
         <div class="album-block">
           <div class="album-hd">
@@ -417,12 +429,14 @@ function renderArtist(data, base) {
       trackIndex += tracks.length;
     } else if (tracks.length === 1) {
       const t = tracks[0];
-      const art = rel.artwork
-        ? `<img class="t-art" src="${escapeHTML(resolveUrl(relBase, rel.artwork))}" loading="lazy" onerror="this.style.display='none'">`
-        : '';
+      const artwork = rel.artwork ? resolveUrl(relBase, rel.artwork) : '';
+      const art = artwork
+        ? `<img class="t-art" src="${escapeHTML(artwork)}" loading="lazy" onerror="this.style.display='none'">`
+        : `<div class="t-art-placeholder"></div>`;
       releasesHTML += `
         <div class="track" data-qi="${startIdx}">
           <span class="t-num">${startIdx + 1}</span>
+          <span class="t-now-icon" style="display:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><use href="icons.svg#play-small"/></svg></span>
           ${art}
           <div class="t-info">
             <strong>${escapeHTML(t.title)}</strong>
@@ -450,7 +464,6 @@ function renderArtist(data, base) {
 
   buildQueue(data.releases || [], base);
 
-  // Enqueue duration loads
   (data.releases || []).forEach(rel => {
     const relBase = rel._base || base;
     (rel.tracks || []).forEach((track, i) => {
@@ -466,11 +479,11 @@ function renderArtist(data, base) {
 // EVENT HANDLERS & INITIALIZATION
 // ============================================================================
 function setupEventListeners() {
-  // Audio events
   DOM.aud.ontimeupdate = debounce(() => {
     DOM.bCur.textContent = formatTime(DOM.aud.currentTime);
     if (!state.seekDragging && DOM.aud.duration) {
-      DOM.bSeek.value = (DOM.aud.currentTime / DOM.aud.duration) * 100;
+      const percent = (DOM.aud.currentTime / DOM.aud.duration) * 100;
+      DOM.pFill.style.width = percent + '%';
     }
     if (state.lrcLines.length) {
       highlightCurrentLine(DOM.aud.currentTime);
@@ -483,21 +496,27 @@ function setupEventListeners() {
 
   DOM.aud.onended = () => skip(1);
 
-  // Seek bar
-  DOM.bSeek.addEventListener('mousedown', () => { state.seekDragging = true; });
-  DOM.bSeek.addEventListener('mouseup', () => {
-    state.seekDragging = false;
-    DOM.aud.currentTime = (DOM.bSeek.value / 100) * (DOM.aud.duration || 0);
-  });
-  DOM.bSeek.addEventListener('touchstart', () => { state.seekDragging = true; }, { passive: true });
-  DOM.bSeek.addEventListener('touchend', () => {
-    state.seekDragging = false;
-    DOM.aud.currentTime = (DOM.bSeek.value / 100) * (DOM.aud.duration || 0);
+  DOM.pBar.addEventListener('click', e => {
+    const rect = DOM.pBar.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    DOM.aud.currentTime = percent * DOM.aud.duration;
   });
 
-  // Track click delegation (avoid inline onclick)
+  DOM.volSlider.addEventListener('input', e => {
+    DOM.aud.volume = e.target.value / 100;
+  });
+
+  const savedVolume = localStorage.getItem(CONFIG.VOLUME_STORAGE_KEY);
+  if (savedVolume !== null) {
+    DOM.aud.volume = parseFloat(savedVolume);
+    DOM.volSlider.value = savedVolume * 100;
+  } else {
+    DOM.aud.volume = 0.8;
+    DOM.volSlider.value = 80;
+  }
+
   document.addEventListener('click', e => {
-    const trackDiv = e.target.closest('.track');
+    const trackDiv = e.target.closest('.track, .track-singles');
     if (!trackDiv) return;
     const qi = trackDiv.dataset.qi;
     if (qi !== undefined) {
@@ -505,7 +524,6 @@ function setupEventListeners() {
     }
   });
 
-  // Lyrics line click delegation
   DOM.lyricsText.addEventListener('click', e => {
     const line = e.target.closest('.lrc-line');
     if (!line) return;
@@ -515,7 +533,6 @@ function setupEventListeners() {
     }
   });
 
-  // Lyrics panel toggle
   DOM.lyricsBtn.addEventListener('click', () => {
     if (DOM.lyricsBtn.classList.contains('disabled')) return;
     state.lyricsOpen = !state.lyricsOpen;
@@ -523,14 +540,10 @@ function setupEventListeners() {
     DOM.lyricsBtn.classList.toggle('active', state.lyricsOpen);
   });
 
-  // Play/pause button
   DOM.bPp.addEventListener('click', togglePlay);
-
-  // Prev/next
   DOM.bPrev.addEventListener('click', () => skip(-1));
   DOM.bNext.addEventListener('click', () => skip(1));
 
-  // Keyboard shortcuts
   window.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     switch (e.code) {
@@ -551,19 +564,12 @@ function setupEventListeners() {
     }
   });
 
-  // Save volume and last position
   window.addEventListener('beforeunload', () => {
     if (DOM.aud.src) {
       localStorage.setItem(CONFIG.LAST_POSITION_STORAGE_KEY, DOM.aud.currentTime);
     }
     localStorage.setItem(CONFIG.VOLUME_STORAGE_KEY, DOM.aud.volume);
   });
-
-  // Restore volume
-  const savedVolume = localStorage.getItem(CONFIG.VOLUME_STORAGE_KEY);
-  if (savedVolume !== null) {
-    DOM.aud.volume = parseFloat(savedVolume);
-  }
 }
 
 // ============================================================================
@@ -587,12 +593,10 @@ async function resolveRelease(base, ref) {
 }
 
 async function boot() {
-  // Cache DOM elements
   DOM = {
     aud: document.getElementById('aud'),
     bCur: document.getElementById('b-cur'),
     bDur: document.getElementById('b-dur'),
-    bSeek: document.getElementById('b-seek'),
     bTitle: document.getElementById('b-title'),
     bSub: document.getElementById('b-sub'),
     bar: document.getElementById('bar'),
@@ -605,7 +609,11 @@ async function boot() {
     root: document.getElementById('root'),
     bPrev: document.getElementById('b-prev'),
     bNext: document.getElementById('b-next'),
-    bPp: document.getElementById('b-pp')
+    bPp: document.getElementById('b-pp'),
+    pCover: document.getElementById('p-cover'),
+    volSlider: document.getElementById('vol-slider'),
+    pFill: document.getElementById('pfill'),
+    pBar: document.getElementById('pbar')
   };
 
   setupEventListeners();
@@ -626,7 +634,6 @@ async function boot() {
     renderArtist(data, BASE);
 
     if (state.queue.length && !DOM.bar.classList.contains('on')) {
-      // Try to restore last position
       const lastPos = localStorage.getItem(CONFIG.LAST_POSITION_STORAGE_KEY);
       loadTrackToPlayer(0);
       if (lastPos !== null) {
@@ -638,7 +645,6 @@ async function boot() {
   }
 }
 
-// Start when DOM ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot);
 } else {

@@ -1,29 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
-  <!-- Previous: double chevron left -->
   <symbol id="prev" viewBox="0 0 24 24">
-    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M11 6L5 12l6 6M18 6l-6 6 6 6"/>
+    <path fill="currentColor" d="M6 5v14H4V5h2zm4 7l8-6v12l-8-6z"/>
   </symbol>
-
-  <!-- Next: double chevron right -->
   <symbol id="next" viewBox="0 0 24 24">
-    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 6l6 6-6 6M6 6l6 6-6 6"/>
+    <path fill="currentColor" d="M18 5v14h2V5h-2zm-4 7l-8-6v12l8-6z"/>
   </symbol>
-
-  <!-- Play (now shows pause bars - action preview) -->
   <symbol id="play" viewBox="0 0 24 24">
     <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/>
     <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>
   </symbol>
-
-  <!-- Pause (now shows play triangle - action preview) -->
   <symbol id="pause" viewBox="0 0 24 24">
     <path fill="currentColor" d="M8 5.14v14l11-7-11-7z"/>
   </symbol>
-
-  <!-- Lyrics: hamburger -->
   <symbol id="lyrics" viewBox="0 0 24 24">
     <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="volume" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+  </symbol>
+  <symbol id="play-small" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M8 5v14l11-7z"/>
   </symbol>
 </svg>
